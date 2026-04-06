@@ -1,43 +1,74 @@
 "use client";
 
 import { useState } from "react";
-import { TodoList } from "@/components/home/TodoList";
-import { CreateTodo } from "@/components/home/CreateTodo";
+import { CreateGroup } from "@/components/home/CreateGroup";
 import { GroupList } from "@/components/home/GroupList";
+import { TodoList } from "@/components/home/TodoList";
+import { GlassPanel } from "@/components/ui/GlassPanel";
+import { useTodosStore } from "@/store/todo.store";
 
 export function TodoBoard() {
-  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const groups = useTodosStore((state) => state.groups);
+
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+
+  const activeGroupId =
+    selectedGroupId && groups[selectedGroupId]
+      ? selectedGroupId
+      : null;
 
   return (
-    <main className="flex h-[100svh] max-h-[100svh] w-full flex-col items-center bg-[url('/bg-freeren.png')] bg-cover bg-center overflow-hidden">
-      <div
-        className="flex items-center justify-between gap-4 w-full
-          fixed top-0 z-10 px-6 py-3
-          border-b border-white/10 bg-black/10 backdrop-blur-md"
-      >
-        <span className="text-xl font-bold tracking-widest text-white/90 uppercase font-mono">
-          Tasks
-        </span>
-        <CreateTodo activeGroup={activeGroup} />
-      </div>
+    <main className="h-svh overflow-hidden bg-[url('/bg-freeren.png')] bg-cover bg-center">
+      <div className="h-full bg-slate-950/12">
+        <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 p-3 md:flex-row md:gap-5 md:p-6">
+          <section className="order-1 shrink-0 md:order-2 md:flex md:w-[23rem] md:min-h-0 md:flex-col">
+            <GlassPanel className="flex h-full flex-col gap-3 p-4 sm:p-5">
+              <div className="space-y-2">
+                {/* <p className="text-xs uppercase tracking-[0.28em] text-white/35">
+                  Groups
+                </p> */}
+                <h1 className="text-2xl font-semibold text-white">
+                  Todo spaces
+                </h1>
+                <p className="text-sm leading-6 text-white/55">
+                  Scroll across your groups, then open one to manage its todos.
+                </p>
+              </div>
 
-      <div className="w-full max-w-6xl flex-1 min-h-0 pt-16 px-6 pb-6 flex gap-6">
-        <aside className="w-72 shrink-0 min-h-0">
-          <GroupList
-            activeGroup={activeGroup}
-            onSelect={(name) => setActiveGroup(name)}
-            onDeletedActive={() => setActiveGroup(null)}
-          />
-        </aside>
+              <div className="min-h-0 flex-1">
+                <GroupList
+                  activeGroupId={activeGroupId}
+                  onSelect={setSelectedGroupId}
+                />
+              </div>
 
-        <section className="flex-1 min-h-0 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="text-white/80 text-sm uppercase tracking-widest">
-              {activeGroup ? activeGroup : "No group selected"}
-            </div>
-          </div>
-          <TodoList activeGroup={activeGroup} />
-        </section>
+              <CreateGroup
+                className="mt-auto hidden w-full md:inline-flex"
+                onCreated={setSelectedGroupId}
+              />
+            </GlassPanel>
+          </section>
+
+          <section className="order-2 min-h-0 flex-1 md:order-1 md:min-h-0">
+            {activeGroupId ? (
+              <TodoList
+                activeGroupId={activeGroupId}
+                onClose={() => setSelectedGroupId(null)}
+                onDeleteGroup={(groupId) => {
+                  if (groupId === activeGroupId) {
+                    setSelectedGroupId(null);
+                  }
+                }}
+              />
+            ) : null}
+          </section>
+
+          <section className="order-3 mt-auto shrink-0 px-1 pb-3 md:hidden">
+            <GlassPanel className="p-3">
+              <CreateGroup className="w-full" onCreated={setSelectedGroupId} />
+            </GlassPanel>
+          </section>
+        </div>
       </div>
     </main>
   );

@@ -1,104 +1,362 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import type { Todo } from "@/@types";
+import { createJSONStorage, persist } from "zustand/middleware";
+import type { GroupFormValues, Todo, TodoFormValues, TodoGroup } from "@/@types";
 import { idbStorage } from "@/store/idb";
 
-interface TodoGroup {
-  name: string;
-  todos: Record<string, Todo>;
-}
+const STORE_VERSION = 2;
 
-interface TodosState {
-  groups: Record<string, TodoGroup>;
+type TodoGroups = Record<string, TodoGroup>;
+
+interface PersistedTodosState {
+  groups: TodoGroups;
+  groupOrder: string[];
   hasHydrated: boolean;
 }
 
 interface TodosActions {
-  addGroup: (groupName: string) => void;
-  deleteGroup: (groupName: string) => void;
-  addTodo: (groupName: string, todo: Todo) => void;
-  deleteTodo: (groupName: string, id: string) => void;
-  updateTodo: (groupName: string, id: string, updated: Partial<Todo>) => void;
+  addGroup: (values: GroupFormValues) => string | null;
+  updateGroup: (groupId: string, values: Partial<GroupFormValues>) => void;
+  deleteGroup: (groupId: string) => void;
+  addTodo: (groupId: string, values: TodoFormValues) => string | null;
+  deleteTodo: (groupId: string, todoId: string) => void;
+  updateTodo: (groupId: string, todoId: string, values: Partial<Todo>) => void;
   setHasHydrated: (state: boolean) => void;
 }
 
-type TodosStore = TodosState & TodosActions;
+type TodosStore = PersistedTodosState & TodosActions;
+
+interface LegacyTodo {
+  id: string;
+  title?: string;
+  description: string;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  isDone?: boolean;
+  isCompleted?: boolean;
+}
+
+interface LegacyTodoGroup {
+  name?: string;
+  todos?: Record<string, LegacyTodo>;
+}
+
+interface LegacyPersistedState {
+  groups?: Record<string, LegacyTodoGroup>;
+  hasHydrated?: boolean;
+}
+
+function createId() {
+  return crypto.randomUUID();
+}
+
+function createTimestamp() {
+  return new Date().toISOString();
+}
+
+function normalizeText(value: string) {
+  return value.trim();
+}
+
+function buildFallbackTodoTitle(description: string) {
+  const cleanDescription = normalizeText(description);
+
+  if (!cleanDescription) {
+    return "Untitled todo";
+  }
+
+  return cleanDescription.length > 40
+    ? `${cleanDescription.slice(0, 37)}...`
+    : cleanDescription;
+}
+
+function normalizeDate(value: string | Date | undefined) {
+  if (!value) {
+    return createTimestamp();
+  }
+
+  const dateValue = value instanceof Date ? value.toISOString() : value;
+  return Number.isNaN(Date.parse(dateValue)) ? createTimestamp() : dateValue;
+}
+
+function createEmptyState(): PersistedTodosState {
+  return {
+    groups: {},
+    groupOrder: [],
+    hasHydrated: false,
+  };
+}
+
+function migratePersistedState(state: unknown): PersistedTodosState {
+  if (!state || typeof state !== "object") {
+    return createEmptyState();
+  }
+
+  const candidate = state as Partial<PersistedTodosState & LegacyPersistedState>;
+
+  if (candidate.groups && Array.isArray(candidate.groupOrder)) {
+    const nextGroups: TodoGroups = {};
+    const nextOrder: string[] = [];
+
+    for (const groupId of candidate.groupOrder) {
+      const group = candidate.groups[groupId];
+
+      if (!group) {
+        continue;
+      }
+
+      nextGroups[groupId] = {
+        ...group,
+        todos: group.todos ?? {},
+      };
+      nextOrder.push(groupId);
+    }
+
+    for (const [groupId, group] of Object.entries(candidate.groups)) {
+      if (nextGroups[groupId]) {
+        continue;
+      }
+
+      nextGroups[groupId] = {
+        ...group,
+        todos: group.todos ?? {},
+      };
+      nextOrder.push(groupId);
+    }
+
+    return {
+      groups: nextGroups,
+      groupOrder: nextOrder,
+      hasHydrated: false,
+    };
+  }
+
+  const legacyGroups = candidate.groups ?? {};
+  const nextGroups: TodoGroups = {};
+  const nextOrder: string[] = [];
+
+  for (const [groupName, group] of Object.entries(legacyGroups)) {
+    const groupId = createId();
+    const now = createTimestamp();
+    const todos = Object.fromEntries(
+      Object.entries(group.todos ?? {}).map(([todoId, todo]) => {
+        const title = normalizeText(todo.title ?? "");
+        const description = normalizeText(todo.description ?? "");
+
+        return [
+          todoId,
+          {
+            id: todo.id ?? todoId,
+            title: title || buildFallbackTodoTitle(description),
+            description,
+            isDone: todo.isDone ?? todo.isCompleted ?? false,
+            createdAt: normalizeDate(todo.createdAt),
+            updatedAt: normalizeDate(todo.updatedAt),
+          } satisfies Todo,
+        ];
+      }),
+    );
+
+    nextGroups[groupId] = {
+      id: groupId,
+      title: normalizeText(group.name ?? groupName) || "Untitled group",
+      description: "",
+      createdAt: now,
+      updatedAt: now,
+      todos,
+    };
+    nextOrder.push(groupId);
+  }
+
+  return {
+    groups: nextGroups,
+    groupOrder: nextOrder,
+    hasHydrated: false,
+  };
+}
 
 export const useTodosStore = create<TodosStore>()(
-  persist<TodosStore>(
+  persist(
     (set) => ({
-      groups: {},
-      hasHydrated: false,
+      ...createEmptyState(),
 
-      addGroup: (groupName: string) =>
-        set((state) => {
-          if (state.groups[groupName]) return state;
-          return {
-            groups: {
-              ...state.groups,
-              [groupName]: {
-                name: groupName,
-                todos: {},
-              },
-            },
-          };
-        }),
+      addGroup: (values) => {
+        const title = normalizeText(values.title);
+        const description = normalizeText(values.description);
 
-      deleteGroup: (groupName: string) =>
-        set((state) => {
-          const newGroups = { ...state.groups };
-          delete newGroups[groupName];
-          return { groups: newGroups };
-        }),
+        if (!title) {
+          return null;
+        }
 
-      addTodo: (groupName: string, todo: Todo) =>
+        const groupId = createId();
+        const timestamp = createTimestamp();
+
         set((state) => ({
           groups: {
             ...state.groups,
-            [groupName]: {
-              name: state.groups[groupName]?.name ?? groupName,
-              todos: {
-                ...state.groups[groupName]?.todos,
-                [todo.id]: todo,
-              },
+            [groupId]: {
+              id: groupId,
+              title,
+              description,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+              todos: {},
             },
           },
-        })),
+          groupOrder: [...state.groupOrder, groupId],
+        }));
 
-      deleteTodo: (groupName: string, id: string) =>
+        return groupId;
+      },
+
+      updateGroup: (groupId, values) =>
         set((state) => {
-          const group = state.groups[groupName];
-          if (!group) return state;
+          const group = state.groups[groupId];
 
-          const newTodos = { ...group.todos };
-          delete newTodos[id];
+          if (!group) {
+            return state;
+          }
+
+          const timestamp = createTimestamp();
+
+          const nextTitle =
+            values.title === undefined ? group.title : normalizeText(values.title);
+          const nextDescription =
+            values.description === undefined
+              ? group.description
+              : normalizeText(values.description);
+
+          if (!nextTitle) {
+            return state;
+          }
 
           return {
             groups: {
               ...state.groups,
-              [groupName]: {
+              [groupId]: {
                 ...group,
-                todos: newTodos,
+                title: nextTitle,
+                description: nextDescription,
+                updatedAt: timestamp,
               },
             },
           };
         }),
 
-      updateTodo: (groupName: string, id: string, updated: Partial<Todo>) =>
+      deleteGroup: (groupId) =>
         set((state) => {
-          const group = state.groups[groupName];
-          if (!group) return state;
+          if (!state.groups[groupId]) {
+            return state;
+          }
+
+          const nextGroups = { ...state.groups };
+          delete nextGroups[groupId];
+
+          return {
+            groups: nextGroups,
+            groupOrder: state.groupOrder.filter((id) => id !== groupId),
+          };
+        }),
+
+      addTodo: (groupId, values) => {
+        const title = normalizeText(values.title);
+        const description = normalizeText(values.description);
+
+        if (!title) {
+          return null;
+        }
+
+        const todoId = createId();
+        const timestamp = createTimestamp();
+
+        set((state) => {
+          const group = state.groups[groupId];
+
+          if (!group) {
+            return state;
+          }
 
           return {
             groups: {
               ...state.groups,
-              [groupName]: {
+              [groupId]: {
                 ...group,
+                updatedAt: timestamp,
                 todos: {
                   ...group.todos,
-                  [id]: {
-                    ...group.todos[id],
-                    ...updated,
+                  [todoId]: {
+                    id: todoId,
+                    title,
+                    description,
+                    isDone: false,
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                  },
+                },
+              },
+            },
+          };
+        });
+
+        return todoId;
+      },
+
+      deleteTodo: (groupId, todoId) =>
+        set((state) => {
+          const group = state.groups[groupId];
+
+          if (!group || !group.todos[todoId]) {
+            return state;
+          }
+
+          const timestamp = createTimestamp();
+
+          const nextTodos = { ...group.todos };
+          delete nextTodos[todoId];
+
+          return {
+            groups: {
+              ...state.groups,
+              [groupId]: {
+                ...group,
+                updatedAt: timestamp,
+                todos: nextTodos,
+              },
+            },
+          };
+        }),
+
+      updateTodo: (groupId, todoId, values) =>
+        set((state) => {
+          const group = state.groups[groupId];
+          const todo = group?.todos[todoId];
+
+          if (!group || !todo) {
+            return state;
+          }
+
+          const timestamp = createTimestamp();
+
+          const nextTitle =
+            values.title === undefined ? todo.title : normalizeText(values.title);
+          const nextDescription =
+            values.description === undefined
+              ? todo.description
+              : normalizeText(values.description);
+
+          return {
+            groups: {
+              ...state.groups,
+              [groupId]: {
+                ...group,
+                updatedAt: timestamp,
+                todos: {
+                  ...group.todos,
+                  [todoId]: {
+                    ...todo,
+                    ...values,
+                    title: nextTitle || todo.title,
+                    description: nextDescription,
+                    updatedAt: timestamp,
                   },
                 },
               },
@@ -110,7 +368,9 @@ export const useTodosStore = create<TodosStore>()(
     }),
     {
       name: "todos-idb",
+      version: STORE_VERSION,
       storage: createJSONStorage(() => idbStorage),
+      migrate: (persistedState) => migratePersistedState(persistedState),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },

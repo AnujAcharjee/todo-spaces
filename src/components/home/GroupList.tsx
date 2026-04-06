@@ -1,149 +1,86 @@
 "use client";
 
-import { useState } from "react";
-import { createPortal } from "react-dom";
 import { useTodosStore } from "@/store/todo.store";
-import { TodoModal } from "@/components/home/TodoModal";
 
 interface GroupListProps {
-  activeGroup: string | null;
-  onSelect: (groupName: string) => void;
-  onDeletedActive: () => void;
+  activeGroupId: string | null;
+  onSelect: (groupId: string) => void;
 }
 
-export function GroupList({
-  activeGroup,
-  onSelect,
-  onDeletedActive,
-}: GroupListProps) {
+function truncateDescription(description: string, maxLength = 110) {
+  const normalized = description.trim();
+
+  if (!normalized) {
+    return "No description yet";
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength).trimEnd()}....`;
+}
+
+export function GroupList({ activeGroupId, onSelect }: GroupListProps) {
   const groups = useTodosStore((state) => state.groups);
+  const groupOrder = useTodosStore((state) => state.groupOrder);
   const hasHydrated = useTodosStore((state) => state.hasHydrated);
-  const addGroup = useTodosStore((state) => state.addGroup);
-  const deleteGroup = useTodosStore((state) => state.deleteGroup);
 
-  const [showForm, setShowForm] = useState(false);
-  const [groupName, setGroupName] = useState("");
-  const [error, setError] = useState("");
+  const orderedGroups = groupOrder
+    .map((groupId) => groups[groupId])
+    .filter((group) => Boolean(group));
 
-  const groupNames = Object.keys(groups);
+  if (!hasHydrated) {
+    return (
+      <div className="flex h-full items-center gap-2 px-1 py-3 text-sm text-white/55">
+        <i className="bi bi-arrow-repeat animate-spin" />
+        Loading groups...
+      </div>
+    );
+  }
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = groupName.trim();
-    if (!trimmed) return;
-    if (groups[trimmed]) {
-      setError("A group with this name already exists.");
-      return;
-    }
-    addGroup(trimmed);
-    setGroupName("");
-    setError("");
-    setShowForm(false);
-    onSelect(trimmed);
-  };
-
-  const handleDelete = (name: string) => {
-    deleteGroup(name);
-    if (activeGroup === name) {
-      onDeletedActive();
-    }
-  };
+  if (orderedGroups.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-6 text-center text-sm text-white/45">
+        <i className="bi bi-collection block text-2xl text-white/35" />
+        <p className="mt-2">Create your first group to start organizing todos.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-white/80 text-sm font-semibold tracking-wide uppercase">
-          Groups
-        </h2>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold
-            bg-white/10 hover:bg-white/20 border border-white/20 text-white
-            backdrop-blur-sm transition-all duration-200 hover:scale-105 active:scale-95"
-        >
-          <i className="bi bi-plus-lg text-xs" />
-          New
-        </button>
-      </div>
+    <div className="transparent-scrollbar flex gap-2 overflow-x-auto overflow-y-hidden pb-1 md:h-full md:flex-col md:overflow-x-hidden md:overflow-y-auto md:pb-0 md:pr-1">
+      {orderedGroups.map((group) => {
+        const todoCount = Object.keys(group.todos).length;
+        const isActive = group.id === activeGroupId;
 
-      {!hasHydrated ? (
-        <div className="mt-4 flex items-center gap-2 text-white/50 text-sm">
-          <i className="bi bi-arrow-repeat animate-spin" /> Loading…
-        </div>
-      ) : groupNames.length === 0 ? (
-        <div className="mt-6 text-center text-white/40 text-sm">
-          <i className="bi bi-inbox text-2xl block mb-2 opacity-50" />
-          No groups yet
-        </div>
-      ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2">
-          {groupNames.map((name) => {
-            const isActive = activeGroup === name;
-            const todoCount = Object.keys(groups[name]?.todos ?? {}).length;
-            return (
-              <div
-                key={name}
-                className={`group flex items-center justify-between gap-3 px-3 py-2 rounded-lg
-                  border ${isActive ? "border-white/35" : "border-white/15"}
-                  ${isActive ? "bg-white/15" : "bg-white/8"}
-                  hover:bg-white/12 hover:border-white/25
-                  transition-all duration-200`}
-              >
-                <button
-                  onClick={() => onSelect(name)}
-                  className="flex-1 text-left"
-                >
-                  <div className="text-white/90 text-sm font-medium">
-                    {name}
-                  </div>
-                  <div className="text-white/40 text-xs">
-                    {todoCount} task{todoCount === 1 ? "" : "s"}
-                  </div>
-                </button>
-                <button
-                  onClick={() => handleDelete(name)}
-                  className="p-1.5 rounded-lg text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all"
-                  title="Delete group"
-                >
-                  <i className="bi bi-trash text-xs" />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {showForm &&
-        createPortal(
-          <TodoModal
-            title="Create group"
-            onClose={() => {
-              setShowForm(false);
-              setError("");
-            }}
-            onSubmit={handleCreate}
-            loading={false}
-            submitLabel="Create"
+        return (
+          <button
+            key={group.id}
+            type="button"
+            onClick={() => onSelect(group.id)}
+            className={[
+              "flex h-24 w-52 shrink-0 flex-col rounded-2xl border px-4 py-3 text-left transition backdrop-blur-sm md:h-24 md:w-full md:min-w-0",
+              isActive
+                ? "border-white/20 bg-white/[0.1] shadow-inner shadow-white/5"
+                : "border-white/8 bg-white/[0.04] hover:bg-white/[0.07]",
+            ].join(" ")}
           >
-            <input
-              autoFocus
-              value={groupName}
-              onChange={(e) => {
-                setGroupName(e.target.value);
-                setError("");
-              }}
-              placeholder="Group name"
-              className="w-full bg-white/5 border border-white/20 rounded-lg px-3 py-2.5
-                text-white placeholder:text-white/40 text-sm
-                focus:outline-none focus:border-white/50 focus:bg-white/10
-                transition-all duration-200"
-            />
-            {error && (
-              <div className="text-xs text-red-300 -mt-2">{error}</div>
-            )}
-          </TodoModal>,
-          document.body,
-        )}
+            <div className="flex items-center justify-between gap-3">
+              <p className="truncate text-sm font-semibold text-white">
+                {group.title}
+              </p>
+              <span className="rounded-full bg-black/15 px-2 py-0.5 text-[11px] text-white/65">
+                {todoCount}
+              </span>
+            </div>
+
+            <p className="mt-2 overflow-hidden text-xs leading-4 text-white/55">
+              {truncateDescription(group.description)}
+            </p>
+          </button>
+        );
+      })}
     </div>
   );
 }

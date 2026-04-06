@@ -1,15 +1,27 @@
-interface BaseTodo {
+export interface Todo {
   id: string;
   title: string;
   description: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface Todo extends BaseTodo {
   isDone: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface AddTodo extends BaseTodo {
-  isCompleted: boolean;
+export interface TodoGroup {
+  id: string;
+  title: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  todos: Record<string, Todo>;
+}
+
+export interface GroupFormValues {
+  title: string;
+  description: string;
+}
+
+export interface TodoFormValues {
+  title: string;
+  description: string;
 }
