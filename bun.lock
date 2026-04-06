@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "zustand-test",
+      "name": "todo-spaces",
       "dependencies": {
         "bootstrap-icons": "^1.13.1",
         "clsx": "^2.1.1",
