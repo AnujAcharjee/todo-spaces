@@ -28,11 +28,11 @@ export function TodoBoard() {
                   Groups
                 </p> */}
                 <h1 className="text-2xl font-semibold text-white">
-                  Todo spaces
+                  Todo Spaces
                 </h1>
-                <p className="text-sm leading-6 text-white/55">
+                {/* <p className="text-sm leading-6 text-white/55">
                   Scroll across your groups, then open one to manage its todos.
-                </p>
+                </p> */}
               </div>
 
               <div className="min-h-0 flex-1">
