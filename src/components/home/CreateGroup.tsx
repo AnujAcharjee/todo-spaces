@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import type { GroupFormValues } from "@/@types";
 import { FloatingButton } from "@/components/ui/FloatingButton";
 import { FormField } from "@/components/ui/FormField";
@@ -17,6 +17,9 @@ const EMPTY_GROUP_FORM: GroupFormValues = {
   description: "",
 };
 
+const GROUP_TITLE_SINGLE_LINE_WIDTH = 136;
+const FALLBACK_GROUP_TITLE_MAX_LENGTH = 22;
+
 export function CreateGroup({ onCreated, className }: CreateGroupProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -25,10 +28,35 @@ export function CreateGroup({ onCreated, className }: CreateGroupProps) {
 
   const titleId = useId();
   const descriptionId = useId();
+  const groupTitleMeasureRef = useRef<HTMLSpanElement>(null);
 
   const closeModal = () => {
     setIsOpen(false);
     setFormValues({ ...EMPTY_GROUP_FORM });
+  };
+
+  const getFittingGroupTitle = (value: string) => {
+    const normalizedValue = value.replace(/\r?\n/g, " ");
+    const measureNode = groupTitleMeasureRef.current;
+
+    if (!measureNode) {
+      return normalizedValue.slice(0, FALLBACK_GROUP_TITLE_MAX_LENGTH);
+    }
+
+    let fittedValue = "";
+
+    for (const character of normalizedValue) {
+      const candidate = fittedValue + character;
+      measureNode.textContent = candidate || " ";
+
+      if (measureNode.scrollWidth > GROUP_TITLE_SINGLE_LINE_WIDTH) {
+        break;
+      }
+
+      fittedValue = candidate;
+    }
+
+    return fittedValue;
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -69,7 +97,11 @@ export function CreateGroup({ onCreated, className }: CreateGroupProps) {
         onClose={closeModal}
         onSubmit={handleSubmit}
       >
-        <FormField label="Title" htmlFor={titleId}>
+        <FormField
+          label="Title"
+          htmlFor={titleId}
+          hint="Title stops when it would overflow one line in the group pill."
+        >
           <input
             id={titleId}
             autoFocus
@@ -77,7 +109,7 @@ export function CreateGroup({ onCreated, className }: CreateGroupProps) {
             onChange={(event) =>
               setFormValues((current) => ({
                 ...current,
-                title: event.target.value,
+                title: getFittingGroupTitle(event.target.value),
               }))
             }
             placeholder="Daily errands"
@@ -104,6 +136,12 @@ export function CreateGroup({ onCreated, className }: CreateGroupProps) {
           />
         </FormField>
       </Modal>
+
+      <span
+        ref={groupTitleMeasureRef}
+        aria-hidden="true"
+        className="pointer-events-none fixed left-[-9999px] top-0 whitespace-nowrap text-sm font-semibold opacity-0"
+      />
     </>
   );
 }
