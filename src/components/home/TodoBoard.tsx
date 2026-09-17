@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CreateList } from "@/components/home/CreateList";
 import { GroupList } from "@/components/home/GroupList";
 import { TodoList } from "@/components/home/TodoList";
@@ -19,21 +19,29 @@ export function TodoBoard() {
 
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [editingListId, setEditingListId] = useState<string | null>(null);
+  const initialAutoSelectedRef = useRef(false);
 
   // Load custom background from IndexedDB on mount
   useEffect(() => {
     loadBackground();
   }, [loadBackground]);
 
-  // Auto-select first list once hydrated if none is selected
+  // Auto-select first list once hydrated on initial desktop load only
   useEffect(() => {
-    if (hasHydrated && !selectedGroupId && groupOrder.length > 0) {
-      const firstExisting = groupOrder.find((id) => groups[id]);
-      if (firstExisting) {
-        setSelectedGroupId(firstExisting);
+    if (hasHydrated && !initialAutoSelectedRef.current) {
+      initialAutoSelectedRef.current = true;
+      if (
+        typeof window !== "undefined" &&
+        window.innerWidth >= 768 &&
+        groupOrder.length > 0
+      ) {
+        const firstExisting = groupOrder.find((id) => groups[id]);
+        if (firstExisting) {
+          setSelectedGroupId(firstExisting);
+        }
       }
     }
-  }, [hasHydrated, groupOrder, groups, selectedGroupId]);
+  }, [hasHydrated, groupOrder, groups]);
 
   const activeGroupId =
     selectedGroupId && groups[selectedGroupId] ? selectedGroupId : null;
@@ -84,10 +92,10 @@ export function TodoBoard() {
               {/* Lists Section Title */}
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-white/50">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
                     Lists
                   </span>
-                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/60">
+                  <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold text-white">
                     {totalLists}
                   </span>
                 </div>
@@ -107,7 +115,7 @@ export function TodoBoard() {
                 />
               </div>
 
-              {/* + New List Button */}
+              {/* New List Button */}
               <div className="mt-auto shrink-0 pt-2 border-t border-white/10">
                 <CreateList
                   className="w-full"
@@ -129,8 +137,14 @@ export function TodoBoard() {
               onClose={() => setSelectedGroupId(null)}
               onDeleteGroup={(groupId) => {
                 if (groupId === activeGroupId) {
-                  const remaining = groupOrder.filter((id) => id !== groupId && groups[id]);
-                  setSelectedGroupId(remaining.length > 0 ? remaining[0] : null);
+                  const remaining = groupOrder.filter(
+                    (id) => id !== groupId && groups[id],
+                  );
+                  setSelectedGroupId(
+                    remaining.length > 0 && typeof window !== "undefined" && window.innerWidth >= 768
+                      ? remaining[0]
+                      : null,
+                  );
                 }
               }}
             />

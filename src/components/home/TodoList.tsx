@@ -270,8 +270,19 @@ export function TodoList({
     <>
       <GlassPanel className="flex h-full min-h-0 flex-col overflow-hidden">
         {/* Header: List Name + Counts + Actions */}
-        <div className="shrink-0 border-b border-white/15 px-5 py-4 sm:px-6">
-          <div className="flex items-center justify-between gap-4">
+        <div className="shrink-0 border-b border-white/15 px-4 py-4 sm:px-6">
+          <div className="flex items-center justify-between gap-3 sm:gap-4">
+            {/* Mobile Back button */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-sm font-bold text-white transition hover:bg-white/20 active:scale-95 md:hidden"
+              title="Back to lists"
+              aria-label="Back to lists"
+            >
+              <i className="bi bi-chevron-left text-base" />
+            </button>
+
             <div className="min-w-0 flex-1">
               {isEditingTitle ? (
                 <input
@@ -289,7 +300,7 @@ export function TodoList({
                   className="group flex w-full min-w-0 items-center gap-2.5 text-left"
                   title="Click to rename list"
                 >
-                  <h1 className="block min-w-0 truncate text-2xl font-bold tracking-tight text-white drop-shadow-sm transition group-hover:text-amber-200">
+                  <h1 className="block min-w-0 truncate text-xl sm:text-2xl font-bold tracking-tight text-white drop-shadow-sm transition group-hover:text-amber-200">
                     {activeGroup.title}
                   </h1>
                   <i className="bi bi-pencil text-sm text-white/50 transition group-hover:text-white" />
@@ -297,7 +308,7 @@ export function TodoList({
               )}
 
               {/* Counts indicator */}
-              <div className="mt-1.5 flex items-center gap-2 text-xs font-semibold text-slate-200">
+              <div className="mt-1 flex items-center gap-2 text-xs font-semibold text-slate-200">
                 <span className="text-amber-300">
                   {pendingCount} to do
                 </span>
@@ -333,9 +344,9 @@ export function TodoList({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-sm text-slate-200 transition hover:bg-white/20 hover:text-white md:hidden"
-                title="Back to lists"
-                aria-label="Back to lists"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-sm text-slate-200 transition hover:bg-white/20 hover:text-white active:scale-95 md:hidden"
+                title="Close list"
+                aria-label="Close list"
               >
                 <i className="bi bi-x-lg" />
               </button>

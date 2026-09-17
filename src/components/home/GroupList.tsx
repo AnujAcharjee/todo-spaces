@@ -98,7 +98,7 @@ export function GroupList({
   }
 
   return (
-    <div className="transparent-scrollbar flex gap-2 overflow-x-auto overflow-y-hidden py-1 md:h-full md:flex-col md:overflow-x-hidden md:overflow-y-auto md:pr-1">
+    <div className="transparent-scrollbar flex h-full flex-col gap-2 overflow-y-auto overflow-x-hidden py-1 pr-1">
       {orderedGroups.map((group) => {
         const todoList = Object.values(group.todos);
         const totalCount = todoList.length;
@@ -118,7 +118,7 @@ export function GroupList({
               }
             }}
             className={[
-              "group relative flex w-60 shrink-0 cursor-pointer items-center justify-between gap-2.5 rounded-2xl border p-3 text-left transition-all duration-200 ease-out backdrop-blur-md md:w-full",
+              "group relative flex w-full cursor-pointer items-center justify-between gap-2.5 rounded-2xl border p-3 text-left transition-all duration-200 ease-out backdrop-blur-md",
               isActive
                 ? "border-white/35 bg-white/[0.18] text-white shadow-lg shadow-black/30 ring-1 ring-white/20"
                 : "border-white/10 bg-slate-900/45 text-slate-200 hover:border-white/25 hover:bg-slate-900/65 hover:text-white",
