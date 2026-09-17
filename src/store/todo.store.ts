@@ -80,22 +80,28 @@ function normalizeDate(value: string | Date | undefined) {
   return Number.isNaN(Date.parse(dateValue)) ? createTimestamp() : dateValue;
 }
 
-export function getNextUnnamedListTitle(groups: TodoGroups): string {
+export function getNextUntitledListTitle(groups: TodoGroups): string {
   const titles = new Set(
     Object.values(groups).map((g) => normalizeText(g.title).toLowerCase()),
   );
 
-  if (!titles.has("unnamed")) {
-    return "unnamed";
+  if (!titles.has("untitled list")) {
+    return "Untitled List";
   }
 
   let index = 1;
-  while (titles.has(`unnamed-${index}`)) {
+  while (
+    titles.has(`untitled list (${index})`) ||
+    titles.has(`untitled list ${index}`) ||
+    titles.has(`untitled list-${index}`)
+  ) {
     index++;
   }
 
-  return `unnamed-${index}`;
+  return `Untitled List (${index})`;
 }
+
+export const getNextUnnamedListTitle = getNextUntitledListTitle;
 
 function createEmptyState(): PersistedTodosState {
   return {
@@ -177,7 +183,7 @@ function migratePersistedState(state: unknown): PersistedTodosState {
 
     nextGroups[groupId] = {
       id: groupId,
-      title: normalizeText(group.name ?? groupName) || "Untitled group",
+      title: normalizeText(group.name ?? groupName) || "Untitled List",
       description: "",
       createdAt: now,
       updatedAt: now,
