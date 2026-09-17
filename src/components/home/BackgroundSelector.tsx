@@ -74,14 +74,10 @@ export function BackgroundSelector() {
         open={isOpen}
         title="Customize Background"
         description="Choose a preset wallpaper or upload your own image. It is saved locally in your browser."
-        submitLabel="Done"
+        showFooter={false}
         onClose={() => {
           setIsOpen(false);
           setErrorMessage(null);
-        }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          setIsOpen(false);
         }}
       >
         <div className="space-y-4">

@@ -7,10 +7,11 @@ interface ModalProps {
   open: boolean;
   title: string;
   description?: string;
-  submitLabel: string;
+  submitLabel?: string | null;
+  showFooter?: boolean;
   loading?: boolean;
   onClose: () => void;
-  onSubmit: FormEventHandler<HTMLFormElement>;
+  onSubmit?: FormEventHandler<HTMLFormElement>;
   children: ReactNode;
 }
 
@@ -19,6 +20,7 @@ export function Modal({
   title,
   description,
   submitLabel,
+  showFooter = true,
   loading = false,
   onClose,
   onSubmit,
@@ -73,25 +75,36 @@ export function Modal({
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="flex flex-col gap-5 p-5">
+        <form
+          onSubmit={(e) => {
+            if (onSubmit) {
+              onSubmit(e);
+            } else {
+              e.preventDefault();
+            }
+          }}
+          className="flex flex-col gap-5 p-5"
+        >
           {children}
 
-          <div className="flex items-center justify-end gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-xl border border-white/20 bg-white/20 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? "Saving..." : submitLabel}
-            </button>
-          </div>
+          {showFooter && submitLabel ? (
+            <div className="flex items-center justify-end gap-3 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-xl border border-white/20 bg-white/20 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? "Saving..." : submitLabel}
+              </button>
+            </div>
+          ) : null}
         </form>
       </div>
     </div>,
