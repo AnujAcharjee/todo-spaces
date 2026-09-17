@@ -63,8 +63,12 @@ export function TodoBoard() {
               {/* Branding / App Header */}
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white shadow-sm">
-                    <i className="bi bi-check2-square text-lg" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-white/10 p-1.5 text-white shadow-sm overflow-hidden">
+                    <img
+                      src="/favicon.svg"
+                      alt="Todo Spaces Logo"
+                      className="h-full w-full object-contain"
+                    />
                   </div>
                   <div>
                     <h1 className="text-lg font-bold tracking-tight text-white">

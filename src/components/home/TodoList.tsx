@@ -232,8 +232,12 @@ export function TodoList({
   if (!activeGroupId) {
     return (
       <GlassPanel className="flex h-full min-h-[24rem] flex-col items-center justify-center p-8 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-white/20 bg-white/10 text-white/70 shadow-inner">
-          <i className="bi bi-check2-circle text-3xl" />
+        <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-white/20 bg-white/10 p-3 shadow-inner">
+          <img
+            src="/favicon.svg"
+            alt="Todo Spaces"
+            className="h-full w-full object-contain drop-shadow-md"
+          />
         </div>
         <p className="mt-4 text-xl font-bold text-white">
           Select a list to view tasks

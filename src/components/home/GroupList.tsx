@@ -82,8 +82,12 @@ export function GroupList({
   if (orderedGroups.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-slate-950/30 p-6 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white/70 shadow-inner">
-          <i className="bi bi-list-task text-2xl" />
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/20 bg-white/10 p-2 shadow-inner">
+          <img
+            src="/favicon.svg"
+            alt="Todo Spaces"
+            className="h-full w-full object-contain drop-shadow-sm"
+          />
         </div>
         <p className="mt-3 text-sm font-bold text-white">No lists yet</p>
         <p className="mt-1 text-xs text-slate-300">
