@@ -15,11 +15,13 @@ interface PersistedTodosState {
 
 interface TodosActions {
   addGroup: (values: GroupFormValues) => string | null;
+  createList: (title?: string) => string;
   updateGroup: (groupId: string, values: Partial<GroupFormValues>) => void;
   deleteGroup: (groupId: string) => void;
   addTodo: (groupId: string, values: TodoFormValues) => string | null;
   deleteTodo: (groupId: string, todoId: string) => void;
   updateTodo: (groupId: string, todoId: string, values: Partial<Todo>) => void;
+  toggleStarTodo: (groupId: string, todoId: string) => void;
   setHasHydrated: (state: boolean) => void;
 }
 
@@ -76,6 +78,23 @@ function normalizeDate(value: string | Date | undefined) {
 
   const dateValue = value instanceof Date ? value.toISOString() : value;
   return Number.isNaN(Date.parse(dateValue)) ? createTimestamp() : dateValue;
+}
+
+export function getNextUnnamedListTitle(groups: TodoGroups): string {
+  const titles = new Set(
+    Object.values(groups).map((g) => normalizeText(g.title).toLowerCase()),
+  );
+
+  if (!titles.has("unnamed")) {
+    return "unnamed";
+  }
+
+  let index = 1;
+  while (titles.has(`unnamed-${index}`)) {
+    index++;
+  }
+
+  return `unnamed-${index}`;
 }
 
 function createEmptyState(): PersistedTodosState {
@@ -208,6 +227,37 @@ export const useTodosStore = create<TodosStore>()(
         return groupId;
       },
 
+      createList: (customTitle) => {
+        const groupId = createId();
+        const timestamp = createTimestamp();
+
+        let createdId = groupId;
+
+        set((state) => {
+          const resolvedTitle =
+            customTitle !== undefined && normalizeText(customTitle)
+              ? normalizeText(customTitle)
+              : getNextUnnamedListTitle(state.groups);
+
+          return {
+            groups: {
+              ...state.groups,
+              [groupId]: {
+                id: groupId,
+                title: resolvedTitle,
+                description: "",
+                createdAt: timestamp,
+                updatedAt: timestamp,
+                todos: {},
+              },
+            },
+            groupOrder: [...state.groupOrder, groupId],
+          };
+        });
+
+        return createdId;
+      },
+
       updateGroup: (groupId, values) =>
         set((state) => {
           const group = state.groups[groupId];
@@ -288,6 +338,7 @@ export const useTodosStore = create<TodosStore>()(
                     title,
                     description,
                     isDone: false,
+                    isStarred: false,
                     createdAt: timestamp,
                     updatedAt: timestamp,
                   },
@@ -356,6 +407,36 @@ export const useTodosStore = create<TodosStore>()(
                     ...values,
                     title: nextTitle || todo.title,
                     description: nextDescription,
+                    updatedAt: timestamp,
+                  },
+                },
+              },
+            },
+          };
+        }),
+
+      toggleStarTodo: (groupId, todoId) =>
+        set((state) => {
+          const group = state.groups[groupId];
+          const todo = group?.todos[todoId];
+
+          if (!group || !todo) {
+            return state;
+          }
+
+          const timestamp = createTimestamp();
+
+          return {
+            groups: {
+              ...state.groups,
+              [groupId]: {
+                ...group,
+                updatedAt: timestamp,
+                todos: {
+                  ...group.todos,
+                  [todoId]: {
+                    ...todo,
+                    isStarred: !todo.isStarred,
                     updatedAt: timestamp,
                   },
                 },

@@ -3,6 +3,7 @@ export interface Todo {
   title: string;
   description: string;
   isDone: boolean;
+  isStarred?: boolean;
   createdAt: string;
   updatedAt: string;
 }

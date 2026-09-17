@@ -10,7 +10,6 @@ import {
 } from "react";
 import type { Todo, TodoFormValues } from "@/@types";
 import { GlassPanel } from "@/components/ui/GlassPanel";
-import { FloatingButton } from "@/components/ui/FloatingButton";
 import { FormField } from "@/components/ui/FormField";
 import { Modal } from "@/components/ui/Modal";
 import { useTodosStore } from "@/store/todo.store";
@@ -19,18 +18,13 @@ interface TodoListProps {
   activeGroupId: string | null;
   onDeleteGroup: (groupId: string) => void;
   onClose: () => void;
+  autoFocusTitle?: boolean;
 }
 
 const EMPTY_TODO_FORM: TodoFormValues = {
   title: "",
   description: "",
 };
-
-const GROUP_TITLE_SINGLE_LINE_WIDTH = 136;
-const FALLBACK_GROUP_TITLE_MAX_LENGTH = 22;
-// 320px mobile viewport minus page/panel/card padding, checkbox width, and gap.
-const MOBILE_TODO_TITLE_SINGLE_LINE_WIDTH = 206;
-const FALLBACK_TODO_TITLE_MAX_LENGTH = 40;
 
 type PendingDelete =
   | {
@@ -50,6 +44,7 @@ export function TodoList({
   activeGroupId,
   onDeleteGroup,
   onClose,
+  autoFocusTitle = false,
 }: TodoListProps) {
   const groups = useTodosStore((state) => state.groups);
   const hasHydrated = useTodosStore((state) => state.hasHydrated);
@@ -58,178 +53,160 @@ export function TodoList({
   const addTodo = useTodosStore((state) => state.addTodo);
   const deleteTodo = useTodosStore((state) => state.deleteTodo);
   const updateTodo = useTodosStore((state) => state.updateTodo);
+  const toggleStarTodo = useTodosStore((state) => state.toggleStarTodo);
 
-  const [isEditingGroupTitle, setIsEditingGroupTitle] = useState(false);
-  const [groupTitleDraft, setGroupTitleDraft] = useState("");
-  const [isEditingGroupDescription, setIsEditingGroupDescription] =
-    useState(false);
-  const [groupDescriptionDraft, setGroupDescriptionDraft] = useState("");
-  const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
+  // Group title inline editing
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // Quick Add Task bar state
+  const [quickTaskTitle, setQuickTaskTitle] = useState("");
+  const [quickTaskNote, setQuickTaskNote] = useState("");
+  const [isQuickAddExpanded, setIsQuickAddExpanded] = useState(false);
+  const quickInputRef = useRef<HTMLInputElement>(null);
+
+  // Completed section collapsible toggle
+  const [showCompleted, setShowCompleted] = useState(true);
+
+  // Edit Todo Modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSavingTodo, setIsSavingTodo] = useState(false);
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
-  const [todoFormValues, setTodoFormValues] =
+  const [editFormValues, setEditFormValues] =
     useState<TodoFormValues>(EMPTY_TODO_FORM);
 
-  const groupTitleId = useId();
-  const groupDescriptionId = useId();
-  const todoTitleId = useId();
-  const todoDescriptionId = useId();
-  const groupTitleMeasureRef = useRef<HTMLSpanElement>(null);
-  const todoTitleMeasureRef = useRef<HTMLSpanElement>(null);
+  // Delete modal state
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
+
+  const editTodoTitleId = useId();
+  const editTodoDescriptionId = useId();
 
   const activeGroup = activeGroupId ? groups[activeGroupId] : null;
-  const todos = activeGroup
-    ? Object.values(activeGroup.todos).sort((left, right) => {
-        if (left.isDone !== right.isDone) {
-          return Number(left.isDone) - Number(right.isDone);
-        }
-
-        return (
-          new Date(right.updatedAt).getTime() -
-          new Date(left.updatedAt).getTime()
-        );
-      })
-    : [];
 
   useEffect(() => {
-    setIsEditingGroupTitle(false);
-    setGroupTitleDraft(activeGroup?.title ?? "");
-    setIsEditingGroupDescription(false);
-    setGroupDescriptionDraft(activeGroup?.description ?? "");
-  }, [activeGroup?.id, activeGroup?.title, activeGroup?.description]);
+    if (activeGroup) {
+      setTitleDraft(activeGroup.title);
+      if (autoFocusTitle) {
+        setIsEditingTitle(true);
+      }
+    }
+  }, [activeGroup?.id, autoFocusTitle]);
 
-  const closeTodoModal = () => {
-    setIsTodoModalOpen(false);
-    setEditingTodoId(null);
-    setTodoFormValues({ ...EMPTY_TODO_FORM });
+  useEffect(() => {
+    if (isEditingTitle) {
+      setTimeout(() => {
+        titleInputRef.current?.focus();
+        titleInputRef.current?.select();
+      }, 50);
+    }
+  }, [isEditingTitle]);
+
+  const allTodos = activeGroup ? Object.values(activeGroup.todos) : [];
+
+  // Sort unfinished todos: starred first, then by latest updated
+  const unfinishedTodos = allTodos
+    .filter((t) => !t.isDone)
+    .sort((a, b) => {
+      if (Boolean(a.isStarred) !== Boolean(b.isStarred)) {
+        return a.isStarred ? -1 : 1;
+      }
+      return (
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+    });
+
+  // Sort completed todos by latest updated
+  const completedTodos = allTodos
+    .filter((t) => t.isDone)
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+
+  const totalCount = allTodos.length;
+  const completedCount = completedTodos.length;
+  const pendingCount = unfinishedTodos.length;
+
+  const handleSaveTitle = () => {
+    if (!activeGroupId) return;
+    const trimmed = titleDraft.trim();
+    if (trimmed && trimmed !== activeGroup?.title) {
+      updateGroup(activeGroupId, { title: trimmed });
+    } else {
+      setTitleDraft(activeGroup?.title ?? "");
+    }
+    setIsEditingTitle(false);
   };
 
-  const openCreateTodo = () => {
-    setEditingTodoId(null);
-    setTodoFormValues(EMPTY_TODO_FORM);
-    setIsTodoModalOpen(true);
+  const handleTitleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSaveTitle();
+    } else if (e.key === "Escape") {
+      setTitleDraft(activeGroup?.title ?? "");
+      setIsEditingTitle(false);
+    }
   };
 
-  const openEditTodo = (todo: Todo) => {
+  // Quick Add task handler
+  const handleQuickAddSubmit = (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!activeGroupId) return;
+
+    const trimmedTitle = quickTaskTitle.trim();
+    if (!trimmedTitle) return;
+
+    addTodo(activeGroupId, {
+      title: trimmedTitle,
+      description: quickTaskNote.trim(),
+    });
+
+    setQuickTaskTitle("");
+    setQuickTaskNote("");
+    setIsQuickAddExpanded(false);
+    quickInputRef.current?.focus();
+  };
+
+  const handleQuickAddKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleQuickAddSubmit();
+    }
+  };
+
+  // Edit existing todo
+  const openEditModal = (todo: Todo) => {
     setEditingTodoId(todo.id);
-    setTodoFormValues({
+    setEditFormValues({
       title: todo.title,
       description: todo.description,
     });
-    setIsTodoModalOpen(true);
+    setIsEditModalOpen(true);
   };
 
-  const commitGroupTitle = () => {
-    if (!activeGroupId) {
-      return;
-    }
-
-    const trimmedTitle = groupTitleDraft.trim();
-
-    if (!trimmedTitle) {
-      setGroupTitleDraft(activeGroup?.title ?? "");
-      setIsEditingGroupTitle(false);
-      return;
-    }
-
-    updateGroup(activeGroupId, { title: trimmedTitle });
-    setIsEditingGroupTitle(false);
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+    setEditingTodoId(null);
+    setEditFormValues({ ...EMPTY_TODO_FORM });
   };
 
-  const getFittingGroupTitle = (value: string) => {
-    const normalizedValue = value.replace(/\r?\n/g, " ");
-    const measureNode = groupTitleMeasureRef.current;
-
-    if (!measureNode) {
-      return normalizedValue.slice(0, FALLBACK_GROUP_TITLE_MAX_LENGTH);
-    }
-
-    let fittedValue = "";
-
-    for (const character of normalizedValue) {
-      const candidate = fittedValue + character;
-      measureNode.textContent = candidate || " ";
-
-      if (measureNode.scrollWidth > GROUP_TITLE_SINGLE_LINE_WIDTH) {
-        break;
-      }
-
-      fittedValue = candidate;
-    }
-
-    return fittedValue;
-  };
-
-  const handleGroupTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      commitGroupTitle();
-    }
-
-    if (event.key === "Escape") {
-      setGroupTitleDraft(activeGroup?.title ?? "");
-      setIsEditingGroupTitle(false);
-    }
-  };
-
-  const commitGroupDescription = () => {
-    if (!activeGroupId) {
-      return;
-    }
-
-    updateGroup(activeGroupId, { description: groupDescriptionDraft });
-    setIsEditingGroupDescription(false);
-  };
-
-  const handleGroupDescriptionKeyDown = (
-    event: KeyboardEvent<HTMLTextAreaElement>,
-  ) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setGroupDescriptionDraft(activeGroup?.description ?? "");
-      setIsEditingGroupDescription(false);
-    }
-
-    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      commitGroupDescription();
-    }
-  };
-
-  const handleTodoSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!activeGroupId) {
-      return;
-    }
+  const handleEditModalSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!activeGroupId || !editingTodoId) return;
 
     setIsSavingTodo(true);
-
     try {
-      if (editingTodoId) {
-        updateTodo(activeGroupId, editingTodoId, todoFormValues);
-        closeTodoModal();
-      } else {
-        const todoId = addTodo(activeGroupId, todoFormValues);
-
-        if (!todoId) {
-          return;
-        }
-
-        closeTodoModal();
-      }
+      updateTodo(activeGroupId, editingTodoId, editFormValues);
+      closeEditModal();
     } finally {
       setIsSavingTodo(false);
     }
   };
 
-  const handleDeleteSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!pendingDelete) {
-      return;
-    }
+  const handleDeleteSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!pendingDelete) return;
 
     if (pendingDelete.kind === "group") {
       deleteGroup(pendingDelete.groupId);
@@ -241,36 +218,12 @@ export function TodoList({
     setPendingDelete(null);
   };
 
-  const getFittingTodoTitle = (value: string) => {
-    const normalizedValue = value.replace(/\r?\n/g, " ");
-    const measureNode = todoTitleMeasureRef.current;
-
-    if (!measureNode) {
-      return normalizedValue.slice(0, FALLBACK_TODO_TITLE_MAX_LENGTH);
-    }
-
-    let fittedValue = "";
-
-    for (const character of normalizedValue) {
-      const candidate = fittedValue + character;
-      measureNode.textContent = candidate || " ";
-
-      if (measureNode.scrollWidth > MOBILE_TODO_TITLE_SINGLE_LINE_WIDTH) {
-        break;
-      }
-
-      fittedValue = candidate;
-    }
-
-    return fittedValue;
-  };
-
   if (!hasHydrated) {
     return (
-      <GlassPanel className="flex min-h-[20rem] items-center justify-center px-6 py-10">
-        <div className="flex items-center gap-2 text-sm text-white/55">
-          <i className="bi bi-arrow-repeat animate-spin" />
-          Loading todos...
+      <GlassPanel className="flex h-full min-h-[20rem] items-center justify-center p-6">
+        <div className="flex items-center gap-2.5 text-sm font-medium text-slate-200">
+          <i className="bi bi-arrow-repeat animate-spin text-base" />
+          <span>Loading tasks...</span>
         </div>
       </GlassPanel>
     );
@@ -278,14 +231,16 @@ export function TodoList({
 
   if (!activeGroupId) {
     return (
-      <GlassPanel className="flex min-h-[24rem] flex-col items-center justify-center px-6 py-10 text-center">
-        <i className="bi bi-journal-richtext text-4xl text-white/35" />
-        <p className="mt-4 text-lg font-semibold text-white/80">
-          Pick a group to see its todos
+      <GlassPanel className="flex h-full min-h-[24rem] flex-col items-center justify-center p-8 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-white/20 bg-white/10 text-white/70 shadow-inner">
+          <i className="bi bi-check2-circle text-3xl" />
+        </div>
+        <p className="mt-4 text-xl font-bold text-white">
+          Select a list to view tasks
         </p>
-        <p className="mt-2 max-w-md text-sm leading-6 text-white/50">
-          Your selected group opens here, with inline rename, delete controls,
-          and the active todo list.
+        <p className="mt-2 max-w-sm text-sm leading-6 text-slate-300">
+          Choose a list from the left sidebar or click{" "}
+          <strong className="text-white">New List</strong> to get started.
         </p>
       </GlassPanel>
     );
@@ -293,13 +248,15 @@ export function TodoList({
 
   if (!activeGroup) {
     return (
-      <GlassPanel className="flex min-h-[24rem] flex-col items-center justify-center px-6 py-10 text-center">
-        <i className="bi bi-exclamation-circle text-4xl text-white/35" />
-        <p className="mt-4 text-lg font-semibold text-white/80">
-          This group was removed
+      <GlassPanel className="flex h-full min-h-[24rem] flex-col items-center justify-center p-8 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-red-400/30 bg-red-400/10 text-red-200">
+          <i className="bi bi-exclamation-triangle text-3xl" />
+        </div>
+        <p className="mt-4 text-xl font-bold text-white">
+          List not found
         </p>
-        <p className="mt-2 text-sm text-white/50">
-          Select another group from the list to continue.
+        <p className="mt-2 text-sm text-slate-300">
+          This list may have been deleted. Select another list from the sidebar.
         </p>
       </GlassPanel>
     );
@@ -308,191 +265,348 @@ export function TodoList({
   return (
     <>
       <GlassPanel className="flex h-full min-h-0 flex-col overflow-hidden">
-        <div className="shrink-0 border-b border-white/10 px-4 py-4 sm:px-5">
-          <div className="flex flex-col gap-3">
-            <div className="flex items-start gap-4">
-              <div className="min-w-0 flex-1">
-                {isEditingGroupTitle ? (
-                  <input
-                    id={groupTitleId}
-                    autoFocus
-                    value={groupTitleDraft}
-                    onChange={(event) =>
-                      setGroupTitleDraft(
-                        getFittingGroupTitle(event.target.value),
-                      )
-                    }
-                    onBlur={commitGroupTitle}
-                    onKeyDown={handleGroupTitleKeyDown}
-                    className="w-full rounded-2xl border border-white/15 bg-white/[0.06] px-3 py-2 text-xl font-semibold text-white outline-none transition focus:border-white/25"
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingGroupTitle(true)}
-                    className="group flex w-full min-w-0 items-center gap-2 text-left"
-                  >
-                    <span className="block min-w-0 flex-1 truncate text-2xl font-semibold text-white">
-                      {activeGroup.title}
-                    </span>
-                    <span className="sr-only">Rename group</span>
-                    <i className="bi bi-pencil-square text-sm text-white/40 transition group-hover:text-white/70" />
-                  </button>
-                )}
-              </div>
+        {/* Header: List Name + Counts + Actions */}
+        <div className="shrink-0 border-b border-white/15 px-5 py-4 sm:px-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              {isEditingTitle ? (
+                <input
+                  ref={titleInputRef}
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={handleSaveTitle}
+                  onKeyDown={handleTitleKeyDown}
+                  className="w-full rounded-xl border border-white/30 bg-slate-900/80 px-3 py-1.5 text-2xl font-bold tracking-tight text-white outline-none focus:border-white/60"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingTitle(true)}
+                  className="group flex w-full min-w-0 items-center gap-2.5 text-left"
+                  title="Click to rename list"
+                >
+                  <h1 className="block min-w-0 truncate text-2xl font-bold tracking-tight text-white drop-shadow-sm transition group-hover:text-amber-200">
+                    {activeGroup.title}
+                  </h1>
+                  <i className="bi bi-pencil text-sm text-white/50 transition group-hover:text-white" />
+                </button>
+              )}
 
-              <div className="flex shrink-0 items-center gap-1.5">
-                <div className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-white/55">
-                  {todos.length} todo{todos.length === 1 ? "" : "s"}
-                </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-sm text-white/70 transition hover:bg-white/[0.08] hover:text-white"
-                  title="Hide todo list"
-                  aria-label="Hide todo list"
-                >
-                  <i className="bi bi-eye-slash" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPendingDelete({
-                      kind: "group",
-                      groupId: activeGroup.id,
-                      label: activeGroup.title,
-                    })
-                  }
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-200/12 bg-red-400/[0.06] text-sm text-red-100 transition hover:bg-red-400/[0.1]"
-                  title="Delete group"
-                  aria-label="Delete group"
-                >
-                  <i className="bi bi-trash3" />
-                </button>
+              {/* Counts indicator */}
+              <div className="mt-1.5 flex items-center gap-2 text-xs font-semibold text-slate-200">
+                <span className="text-amber-300">
+                  {pendingCount} to do
+                </span>
+                <span className="text-white/40">•</span>
+                <span className="text-emerald-300">
+                  {completedCount} completed
+                </span>
+                {totalCount > 0 && (
+                  <span className="hidden sm:inline text-slate-300/80 font-normal">
+                    ({totalCount} total)
+                  </span>
+                )}
               </div>
             </div>
 
-            {isEditingGroupDescription ? (
-              <textarea
-                id={groupDescriptionId}
-                autoFocus
-                rows={3}
-                value={groupDescriptionDraft}
-                onChange={(event) =>
-                  setGroupDescriptionDraft(event.target.value)
-                }
-                onBlur={commitGroupDescription}
-                onKeyDown={handleGroupDescriptionKeyDown}
-                placeholder="Add a short description for this group"
-                className="w-full resize-none rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.08]"
-              />
-            ) : (
+            {/* List Actions */}
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIsEditingGroupDescription(true)}
-                className="group w-full rounded-2xl text-left outline-none"
-                aria-label="Edit group description"
+                onClick={() =>
+                  setPendingDelete({
+                    kind: "group",
+                    groupId: activeGroup.id,
+                    label: activeGroup.title,
+                  })
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-300/25 bg-red-500/15 text-sm text-red-100 transition hover:bg-red-500/30 hover:text-white shadow-sm"
+                title="Delete list"
+                aria-label="Delete list"
               >
-                <span className="block w-full break-words whitespace-pre-wrap text-sm leading-6 text-white/55 transition group-hover:text-white/75">
-                  {activeGroup.description ||
-                    "No description added for this group."}
-                </span>
+                <i className="bi bi-trash3" />
               </button>
-            )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-sm text-slate-200 transition hover:bg-white/20 hover:text-white md:hidden"
+                title="Back to lists"
+                aria-label="Back to lists"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="transparent-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
-          {todos.length === 0 ? (
-            <div className="flex h-full min-h-56 flex-col items-center justify-center text-center">
-              <i className="bi bi-card-checklist text-4xl text-white/30" />
-              <p className="mt-4 text-lg font-semibold text-white/80">
-                No todos in this group yet
+        {/* Microsoft To Do signature "+ Add a task" quick bar */}
+        <div className="shrink-0 border-b border-white/15 px-5 py-3 sm:px-6">
+          <form
+            onSubmit={handleQuickAddSubmit}
+            className="flex flex-col rounded-2xl border border-white/20 bg-slate-900/60 p-2.5 transition focus-within:border-white/40 focus-within:bg-slate-900/80 focus-within:shadow-xl focus-within:shadow-black/40"
+          >
+            <div className="flex items-center gap-3 px-2 py-1">
+              <button
+                type="submit"
+                disabled={!quickTaskTitle.trim()}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/30 text-white/60 transition hover:border-white/60 hover:text-white disabled:cursor-default disabled:opacity-40"
+                title="Add task"
+              >
+                <i className="bi bi-plus-lg text-sm" />
+              </button>
+
+              <input
+                ref={quickInputRef}
+                value={quickTaskTitle}
+                onChange={(e) => setQuickTaskTitle(e.target.value)}
+                onFocus={() => setIsQuickAddExpanded(true)}
+                onKeyDown={handleQuickAddKeyDown}
+                placeholder="Add a task"
+                className="min-w-0 flex-1 bg-transparent text-sm font-medium text-white placeholder:text-slate-300/60 outline-none"
+              />
+
+              {quickTaskTitle.trim() && (
+                <button
+                  type="submit"
+                  className="rounded-xl border border-white/25 bg-white/25 px-3 py-1 text-xs font-semibold text-white shadow transition hover:bg-white/35 active:scale-95"
+                >
+                  Add
+                </button>
+              )}
+            </div>
+
+            {/* Expandable note addition */}
+            {isQuickAddExpanded && (
+              <div className="mt-2 flex flex-col gap-2 border-t border-white/10 px-2 pt-2">
+                <textarea
+                  rows={2}
+                  value={quickTaskNote}
+                  onChange={(e) => setQuickTaskNote(e.target.value)}
+                  placeholder="Add note or details (optional)..."
+                  className="w-full resize-none bg-transparent text-xs leading-5 text-white placeholder:text-slate-400 outline-none"
+                />
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] text-slate-300">
+                    Press <kbd className="rounded bg-white/15 px-1 py-0.5 font-mono text-[10px] text-white">Enter</kbd> to add
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsQuickAddExpanded(false);
+                      setQuickTaskNote("");
+                    }}
+                    className="text-xs text-slate-300 transition hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </form>
+        </div>
+
+        {/* Scrollable Tasks Container */}
+        <div className="transparent-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4 sm:px-6">
+          {/* Empty state if total is 0 */}
+          {totalCount === 0 && (
+            <div className="flex h-full min-h-[16rem] flex-col items-center justify-center p-6 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/15 bg-white/5 text-white/50">
+                <i className="bi bi-sun text-2xl" />
+              </div>
+              <p className="mt-3 text-base font-bold text-white">
+                No tasks in this list
               </p>
-              <p className="mt-2 max-w-md text-sm leading-6 text-white/50">
-                Use the add button below to create the first todo for this
-                group.
+              <p className="mt-1 text-xs text-slate-300">
+                Type above in &ldquo;Add a task&rdquo; and press Enter.
               </p>
             </div>
-          ) : (
+          )}
+
+          {/* Unfinished (Active) Tasks */}
+          {unfinishedTodos.length > 0 && (
             <div className="space-y-2">
-              {todos.map((todo) => (
-                <article
-                  key={todo.id}
-                  className={[
-                    "rounded-xl border px-3 py-3 transition",
-                    todo.isDone
-                      ? "border-white/6 bg-white/[0.03] opacity-70"
-                      : "border-white/10 bg-white/[0.05] hover:bg-white/[0.08]",
-                  ].join(" ")}
-                >
-                  <div className="flex items-start gap-2.5">
+              {unfinishedTodos.map((todo) => {
+                const isStarred = Boolean(todo.isStarred);
+
+                return (
+                  <article
+                    key={todo.id}
+                    className={[
+                      "group relative flex items-start gap-3 rounded-2xl border p-3.5 transition-all duration-200 backdrop-blur-md shadow-sm",
+                      isStarred
+                        ? "border-amber-400/40 bg-amber-500/10 hover:bg-amber-500/15"
+                        : "border-white/15 bg-slate-900/50 hover:border-white/25 hover:bg-slate-900/70",
+                    ].join(" ")}
+                  >
+                    {/* Circle Complete Checkbox */}
                     <button
                       type="button"
                       onClick={() =>
                         updateTodo(activeGroup.id, todo.id, {
-                          isDone: !todo.isDone,
+                          isDone: true,
                         })
                       }
-                      className={[
-                        "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition",
-                        todo.isDone
-                          ? "border-white/70 bg-white/80 text-slate-900"
-                          : "border-white/25 bg-transparent text-white/30 hover:border-white/45",
-                      ].join(" ")}
-                      aria-label={
-                        todo.isDone
-                          ? "Mark todo as pending"
-                          : "Mark todo as done"
-                      }
+                      className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-white/50 bg-white/5 text-transparent transition duration-200 hover:border-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300"
+                      title="Mark as completed"
+                      aria-label="Mark task as completed"
                     >
-                      {todo.isDone ? (
-                        <i className="bi bi-check text-sm" />
-                      ) : null}
+                      <i className="bi bi-check text-xs font-bold" />
                     </button>
 
+                    {/* Task Title & Details */}
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <p className="text-sm font-bold text-white leading-5">
+                        {todo.title}
+                      </p>
+                      {todo.description ? (
+                        <p className="mt-1 text-xs leading-5 text-slate-200 whitespace-pre-wrap break-words">
+                          {todo.description}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {/* Actions: Star Toggle, Edit, Delete */}
+                    <div className="flex shrink-0 items-center gap-1">
+                      {/* Star Button */}
+                      <button
+                        type="button"
+                        onClick={() => toggleStarTodo(activeGroup.id, todo.id)}
+                        className={[
+                          "flex h-8 w-8 items-center justify-center rounded-lg transition",
+                          isStarred
+                            ? "text-amber-300 hover:scale-110"
+                            : "text-white/40 hover:bg-white/10 hover:text-amber-300",
+                        ].join(" ")}
+                        title={isStarred ? "Starred / Important" : "Star task"}
+                        aria-label={isStarred ? "Unstar task" : "Star task"}
+                      >
+                        <i
+                          className={`bi ${
+                            isStarred
+                              ? "bi-star-fill text-base drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]"
+                              : "bi-star text-sm"
+                          }`}
+                        />
+                      </button>
+
+                      {/* Edit Button */}
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(todo)}
+                        className="hidden h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/15 hover:text-white group-hover:flex"
+                        title="Edit task"
+                        aria-label="Edit task"
+                      >
+                        <i className="bi bi-pencil" />
+                      </button>
+
+                      {/* Delete Button */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPendingDelete({
+                            kind: "todo",
+                            groupId: activeGroup.id,
+                            todoId: todo.id,
+                            label: todo.title,
+                          })
+                        }
+                        className="hidden h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-red-500/25 hover:text-red-100 group-hover:flex"
+                        title="Delete task"
+                        aria-label="Delete task"
+                      >
+                        <i className="bi bi-trash3" />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Break & Completed Tasks Section */}
+          {completedTodos.length > 0 && (
+            <div className="space-y-2 pt-2">
+              {/* Separator / Collapsible Header */}
+              <button
+                type="button"
+                onClick={() => setShowCompleted(!showCompleted)}
+                className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-xs font-bold uppercase tracking-wider text-slate-300 transition hover:bg-white/10 hover:text-white"
+              >
+                <i
+                  className={`bi bi-chevron-${
+                    showCompleted ? "down" : "right"
+                  } text-xs transition`}
+                />
+                <span>Completed</span>
+                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold text-white">
+                  {completedTodos.length}
+                </span>
+                <div className="h-px flex-1 bg-white/20" />
+              </button>
+
+              {/* Completed Tasks List with Line-through */}
+              {showCompleted && (
+                <div className="space-y-1.5">
+                  {completedTodos.map((todo) => {
+                    const isStarred = Boolean(todo.isStarred);
+
+                    return (
+                      <article
+                        key={todo.id}
+                        className="group relative flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-slate-300 transition-all hover:bg-slate-950/60"
+                      >
+                        {/* Checked Checkbox (Click to uncomplete) */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateTodo(activeGroup.id, todo.id, {
+                              isDone: false,
+                            })
+                          }
+                          className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-emerald-400/80 bg-emerald-500/80 text-slate-950 transition hover:bg-emerald-400"
+                          title="Mark as uncompleted"
+                          aria-label="Mark as uncompleted"
+                        >
+                          <i className="bi bi-check text-xs font-black" />
+                        </button>
+
+                        {/* Title with strike-through */}
                         <div className="min-w-0 flex-1">
-                          <h3
-                            className={[
-                              "truncate text-sm font-semibold sm:text-base",
-                              todo.isDone
-                                ? "text-white/55 line-through"
-                                : "text-white",
-                            ].join(" ")}
-                          >
+                          <p className="text-sm font-medium text-slate-400 line-through">
                             {todo.title}
-                          </h3>
-                          <p
-                            className={[
-                              "mt-1.5 text-xs leading-5 break-words whitespace-pre-wrap [overflow-wrap:anywhere] sm:text-sm",
-                              todo.isDone ? "text-white/40" : "text-white/65",
-                            ].join(" ")}
-                          >
-                            {todo.description || "No details added."}
                           </p>
+                          {todo.description ? (
+                            <p className="mt-0.5 text-xs text-slate-500 line-through whitespace-pre-wrap break-words">
+                              {todo.description}
+                            </p>
+                          ) : null}
                         </div>
 
-                        <div className="flex shrink-0 items-center gap-1.5 self-start sm:self-auto">
-                          <span className="text-[11px] text-white/35">
-                            {new Date(todo.updatedAt).toLocaleDateString(
-                              "en-GB",
-                              {
-                                day: "numeric",
-                                month: "short",
-                              },
-                            )}
-                          </span>
+                        {/* Actions */}
+                        <div className="flex shrink-0 items-center gap-1">
+                          {/* Star button */}
                           <button
                             type="button"
-                            onClick={() => openEditTodo(todo)}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/8 bg-white/[0.04] text-sm text-white/70 transition hover:bg-white/[0.08] hover:text-white"
-                            title="Edit todo"
-                            aria-label="Edit todo"
+                            onClick={() =>
+                              toggleStarTodo(activeGroup.id, todo.id)
+                            }
+                            className={[
+                              "flex h-7 w-7 items-center justify-center rounded-lg transition",
+                              isStarred
+                                ? "text-amber-400"
+                                : "text-white/30 hover:text-amber-400",
+                            ].join(" ")}
+                            title={isStarred ? "Starred" : "Star task"}
                           >
-                            <i className="bi bi-pencil-square" />
+                            <i
+                              className={`bi ${
+                                isStarred ? "bi-star-fill text-sm" : "bi-star text-xs"
+                              }`}
+                            />
                           </button>
+
+                          {/* Delete button */}
                           <button
                             type="button"
                             onClick={() =>
@@ -503,111 +617,86 @@ export function TodoList({
                                 label: todo.title,
                               })
                             }
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/8 bg-white/[0.04] text-sm text-white/70 transition hover:bg-red-400/[0.1] hover:text-red-100"
-                            title="Delete todo"
-                            aria-label="Delete todo"
+                            className="hidden h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-500/25 hover:text-red-200 group-hover:flex"
+                            title="Delete task"
                           >
-                            <i className="bi bi-trash3" />
+                            <i className="bi bi-trash3 text-xs" />
                           </button>
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              ))}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
-
-        <div className="shrink-0 border-t border-white/10 px-4 py-3 sm:px-5">
-          <FloatingButton
-            type="button"
-            onClick={openCreateTodo}
-            className="w-full sm:w-auto"
-          >
-            <i className="bi bi-plus-lg text-base" />
-            <span>Add Todo</span>
-          </FloatingButton>
-        </div>
       </GlassPanel>
 
+      {/* Edit Todo Modal */}
       <Modal
-        open={isTodoModalOpen}
-        title={editingTodoId ? "Edit todo" : "Add a todo"}
-        description="Todos saved here, so your brain can finally take a break 😌"
-        submitLabel={editingTodoId ? "Save Todo" : "Add Todo"}
+        open={isEditModalOpen}
+        title="Edit task"
+        description="Update your task title and details."
+        submitLabel="Save Changes"
         loading={isSavingTodo}
-        onClose={closeTodoModal}
-        onSubmit={handleTodoSubmit}
+        onClose={closeEditModal}
+        onSubmit={handleEditModalSubmit}
       >
-        <FormField
-          label="Title"
-          htmlFor={todoTitleId}
-          hint="Title stops when it would overflow one line in the todo card."
-        >
+        <FormField label="Title" htmlFor={editTodoTitleId}>
           <input
-            id={todoTitleId}
+            id={editTodoTitleId}
             autoFocus
-            value={todoFormValues.title}
-            onChange={(event) =>
-              setTodoFormValues((current) => ({
+            value={editFormValues.title}
+            onChange={(e) =>
+              setEditFormValues((current) => ({
                 ...current,
-                title: getFittingTodoTitle(event.target.value),
+                title: e.target.value,
               }))
             }
-            placeholder="Pay electricity bill"
-            className="rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.08]"
+            placeholder="Task title"
+            className="rounded-2xl border border-white/20 bg-slate-900/70 px-4 py-3 text-sm font-medium text-white outline-none transition focus:border-white/40 focus:bg-slate-900/90"
           />
         </FormField>
 
-        <FormField label="Description" htmlFor={todoDescriptionId}>
+        <FormField label="Note / Details" htmlFor={editTodoDescriptionId}>
           <textarea
-            id={todoDescriptionId}
+            id={editTodoDescriptionId}
             rows={4}
-            value={todoFormValues.description}
-            onChange={(event) =>
-              setTodoFormValues((current) => ({
+            value={editFormValues.description}
+            onChange={(e) =>
+              setEditFormValues((current) => ({
                 ...current,
-                description: event.target.value,
+                description: e.target.value,
               }))
             }
-            placeholder="Add any notes, context, or checklist details"
-            className="rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-white/25 focus:bg-white/[0.08]"
+            placeholder="Add any additional notes or details..."
+            className="rounded-2xl border border-white/20 bg-slate-900/70 px-4 py-3 text-sm text-white outline-none transition focus:border-white/40 focus:bg-slate-900/90"
           />
         </FormField>
       </Modal>
 
+      {/* Delete Confirmation Modal */}
       <Modal
         open={Boolean(pendingDelete)}
         title={
           pendingDelete?.kind === "group"
-            ? "Delete this group?"
-            : "Delete this todo?"
+            ? "Delete this list?"
+            : "Delete this task?"
         }
         description="This action is permanent and cannot be undone."
         submitLabel={
-          pendingDelete?.kind === "group" ? "Delete Group" : "Delete Todo"
+          pendingDelete?.kind === "group" ? "Delete List" : "Delete Task"
         }
         onClose={() => setPendingDelete(null)}
         onSubmit={handleDeleteSubmit}
       >
-        <p className="text-sm leading-6 text-white/70">
+        <p className="text-sm leading-6 text-slate-200">
           {pendingDelete?.kind === "group"
-            ? `Are you sure you want to delete "${pendingDelete.label}" and all of its todos?`
+            ? `Are you sure you want to delete "${pendingDelete.label}" and all of its tasks?`
             : `Are you sure you want to delete "${pendingDelete?.label}"?`}
         </p>
       </Modal>
-
-      <span
-        ref={groupTitleMeasureRef}
-        aria-hidden="true"
-        className="pointer-events-none fixed left-[-9999px] top-0 whitespace-nowrap text-sm font-semibold opacity-0"
-      />
-      <span
-        ref={todoTitleMeasureRef}
-        aria-hidden="true"
-        className="pointer-events-none fixed left-[-9999px] top-0 whitespace-nowrap text-sm font-semibold opacity-0"
-      />
     </>
   );
 }
